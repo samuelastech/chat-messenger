@@ -48,13 +48,14 @@ public class Client{
             @Override
             public void run(){
                 String messageFromGroupChat;
-                try{
-                    while(socket.isConnected()){
+
+                while(socket.isConnected()){
+                    try{
                         messageFromGroupChat = bufferedReader.readLine();
                         System.out.println(messageFromGroupChat);
+                    }catch(IOException error){
+                        closeEverything(socket, bufferedReader, bufferedWriter);
                     }
-                }catch(IOException error){
-                    closeEverything(socket, bufferedReader, bufferedWriter);
                 }
             }
         }).start();
