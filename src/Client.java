@@ -1,93 +1,94 @@
-import java.io.*;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.io.InputStream;
+import java.io.PrintStream;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.Scanner;
+import java.io.StringReader;
 
-public class Client{
-    private Socket socket;
-    private BufferedWriter bufferedWriter;
-    private BufferedReader bufferedReader;
-    private String username;
+public class Client {
 
-    public Client(Socket socket, String username){
-        try{
-            this.socket = socket;
-            this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-            this.username = username;
-        }catch(IOException error){
-            closeEverything(socket, bufferedReader, bufferedWriter);
-        }
+  private String host;
+  private int port;
+
+  public static void main(String[] args) throws UnknownHostException, IOException {
+    new Client("127.0.0.1", 12345).run();
+  }
+
+  public Client(String host, int port) {
+    this.host = host;
+    this.port = port;
+  }
+
+  public void run() throws UnknownHostException, IOException {
+    // connect client to server
+    Socket client = new Socket(host, port);
+    System.out.println("Secretary successfully connected to server!");
+
+    // Get Socket output stream (where the client send her mesg)
+    PrintStream output = new PrintStream(client.getOutputStream());
+
+    // ask for a nickname
+    Scanner sc = new Scanner(System.in);
+    System.out.print("Enter a name: ");
+    String nickname = sc.nextLine();
+
+    // send nickname to server
+    output.println(nickname);
+
+    // create a new thread for server messages handling
+    new Thread(new ReceivedMessagesHandler(client.getInputStream())).start();
+
+    // read messages from keyboard and send to server
+    System.out.println("Messages: \n");
+
+    // while new messages
+    while (sc.hasNextLine()) {
+      output.println(sc.nextLine());
     }
 
-    /**
-     * Sends messages to our ClientHandler
-     */
-    public void sendMessage(){
-        try{
-           bufferedWriter.write(username);
-           bufferedWriter.newLine();
-           bufferedWriter.flush();
+    // end ctrl D
+    output.close();
+    sc.close();
+    client.close();
+  }
+}
 
-           Scanner scanner = new Scanner(System.in);
-           while(socket.isConnected()){
-               String message = scanner.nextLine();
-               bufferedWriter.write(username + ": " + message);
-               bufferedWriter.newLine();
-               bufferedWriter.flush();
-           }
-        }catch(IOException error){
-            closeEverything(socket, bufferedReader, bufferedWriter);
-        }
+class ReceivedMessagesHandler implements Runnable {
+
+  private InputStream server;
+
+  public ReceivedMessagesHandler(InputStream server) {
+    this.server = server;
+  }
+
+  public void run() {
+    // receive server messages and print out to screen
+    Scanner s = new Scanner(server);
+    String tmp = "";
+    while (s.hasNextLine()) {
+      tmp = s.nextLine();
+      if (tmp.charAt(0) == '[') {
+        tmp = tmp.substring(1, tmp.length()-1);
+        System.out.println(
+            "\nUSERS LIST: " +
+            new ArrayList<String>(Arrays.asList(tmp.split(","))) + "\n"
+            );
+      }else{
+        try {
+          System.out.println("\n" + getTagValue(tmp));
+          // System.out.println(tmp);
+        } catch(Exception ignore){}
+      }
     }
+    s.close();
+  }
 
-    /**
-     * Listen to messages from the server
-     */
-    public void listenForMessage(){
-        new Thread(new Runnable(){
-            @Override
-            public void run(){
-                String messageFromGroupChat;
+  // I could use a javax.xml.parsers but the goal of Client.java is to keep everything tight and simple
+  public static String getTagValue(String xml){
+    return  xml.split(">")[2].split("<")[0] + xml.split("<span>")[1].split("</span>")[0];
+  }
 
-                while(socket.isConnected()){
-                    try{
-                        messageFromGroupChat = bufferedReader.readLine();
-                        System.out.println(messageFromGroupChat);
-                    }catch(IOException error){
-                        closeEverything(socket, bufferedReader, bufferedWriter);
-                    }
-                }
-            }
-        }).start();
-    }
-
-    public void closeEverything(Socket socket, BufferedReader bufferedReader, BufferedWriter bufferedWriter){
-        try{
-            if(bufferedReader != null){
-                bufferedReader.close();
-            }
-
-            if(bufferedWriter != null){
-                bufferedWriter.close();
-            }
-
-            if(socket != null){
-                socket.close();
-            }
-        }catch(IOException error){
-            error.printStackTrace();
-        }
-    }
-
-    public static void main(String[] args) throws IOException {
-        Scanner scanner = new Scanner(System.in);
-        System.out.println("Enter your name for the secretary group chat: ");
-        String username = scanner.nextLine();
-        Socket socket = new Socket("localhost", 3000);
-        Client client = new Client(socket, username);
-
-        // Separated thread. They'll be able to run at the same time
-        client.listenForMessage();
-        client.sendMessage();
-    }
 }
